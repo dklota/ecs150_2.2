@@ -10,16 +10,13 @@ struct node {
 }; // define a node struct that keeps track of the current node's data + points to the next node
 
 struct queue {
-	/* TODO Phase 1 */
 	// learned this in ECS 36C
 	int size;
 	struct node* head;
 	struct node* tail;
 };
 
-queue_t queue_create(void)
-{
-	/* TODO Phase 1 */
+queue_t queue_create(void) {
 	queue_t q = malloc(sizeof(struct queue)); //using malloc to allocate memory of the size of the struct 
 	q -> head = NULL;
 	q -> tail = NULL;
@@ -42,7 +39,6 @@ int queue_destroy(queue_t queue)
 
 int queue_enqueue(queue_t queue, void *data)
 {
-	/* TODO Phase 1 */
 	if ((queue == NULL) || (data == NULL)) {
 		return -1;
 	}
@@ -53,30 +49,76 @@ int queue_enqueue(queue_t queue, void *data)
 		return -1; // memory did not allocate correctly
 	}
 
+	//init: add with the data and make it the last one by having it point to NULL
 	add_node -> data = data;
 	add_node -> next = NULL;
 
-	//TO-DO: add node to the queue
+	// if condition for if it is the first item in the queue
+	if (queue -> size == 0) {
+		//add node to the queue - head and tail both point to the new node
+		queue -> head = add_node;
+		queue -> tail = add_node;
+	}
+	else {
+		//there is more in the queue already
+		queue -> tail = add_node;
+	}
 
+	queue -> size++; //incr size because we added a node
+	return 0;
 }
 
 int queue_dequeue(queue_t queue, void **data)
 {
-	/* TODO Phase 1 */
+	if ((queue == NULL) || (data == NULL) || (queue -> size == 0)) {
+		return -1;
+	}
+
+	//to dequeue: save the first node + data
+	struct node* first_node = queue -> head; // first node is the head of the queue
+	*data = first_node -> data; // first node data is data of the head
+
+	// if there is more in the queue - set the head to NULL bc we remove the first item
+	// data of the next node becomes the head
+	queue -> head = first_node -> next; 
+	
+	// if the queue is now empty - fix the tail
+	if (queue -> head == NULL) {
+		queue -> tail == NULL;
+	}
+
+	free(first_node);
+	queue -> size--; // decr the size
+	return 0;
 }
 
 int queue_delete(queue_t queue, void *data)
 {
-	/* TODO Phase 1 */
+	/* TODO Phase 1 - work in progress */ 
+	struct node* current = queue -> head;
+	while (current != NULL) {
+		current -> data = NULL;
+		current = current -> next;
+	}
 }
 
 int queue_iterate(queue_t queue, queue_func_t func)
 {
-	/* TODO Phase 1 */
+	if ((queue == NULL) || (func == NULL)) {
+		return -1;
+	}
+
+	struct node* current = queue -> head; //start at the head node
+
+	while (current != NULL) {
+		func(queue, current -> data); // call the function the queue and the data of the current node
+		current = current -> next; // incr by making current the next node in the queue 
+	}
+	return 0;
 }
 
 int queue_length(queue_t queue)
 {
-	/* TODO Phase 1 */
+	return queue -> size; // simply return the size of the queue
 }
 
