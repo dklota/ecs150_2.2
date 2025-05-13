@@ -94,12 +94,32 @@ int queue_dequeue(queue_t queue, void **data)
 
 int queue_delete(queue_t queue, void *data)
 {
-	/* TODO Phase 1 - work in progress */ 
 	struct node* current = queue -> head;
+	struct node* prev = NULL;
+	
 	while (current != NULL) {
+		if (current -> data == data) {
+			if (prev == NULL) {
+				//deleting head
+				queue -> head = current -> next; // if it's first
+			}
+			else {
+				prev -> next = current -> next; // if it's not first
+			}
+
+			// delete the tail
+			if (current == queue -> tail) {
+				queue -> tail = prev;
+			}
+
+			free(current);
+			queue -> size--;
+			return 0;
+		}
 		current -> data = NULL;
 		current = current -> next;
 	}
+	return -1;
 }
 
 int queue_iterate(queue_t queue, queue_func_t func)
