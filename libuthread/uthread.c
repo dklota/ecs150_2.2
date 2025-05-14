@@ -12,6 +12,7 @@
 
 static queue_t ready_queue = NULL;
 static struct uthread_tcb *current_thread = NULL; // declared globally to use for the current thread function
+static struct uthread_tcb *main_thread = NULL;
 
 enum state { // use enum to define the state
 	READY,
@@ -127,23 +128,20 @@ int uthread_create(uthread_func_t func, void *arg)
 
 int uthread_run(bool preempt, uthread_func_t func, void *arg)
 {
-	/* TODO Phase 2 */
 	if (ready_queue != NULL)
-		return -1; // prevent reentry
+		return -1;
 
-	// Create ready queue
 	ready_queue = queue_create();
 	if (ready_queue == NULL)
 		return -1;
 
-	// Create the main thread (current context)
-	struct uthread_tcb *main_thread = malloc(sizeof(struct uthread_tcb));
+	main_thread = malloc(sizeof(struct uthread_tcb));
 	if (main_thread == NULL) {
 		queue_destroy(ready_queue);
 		ready_queue = NULL;
 		return -1;
 	}
-	
+
 	main_thread->thread_state = RUNNING;
 	main_thread->stack = NULL;
 	getcontext(&main_thread->context);
@@ -157,26 +155,21 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		return -1;
 	}
 
-	// Handle preemption if requested
-	if (preempt) {
-		// Preemption will be implemented in Phase 4
-	}
+	// Enqueue the main thread so we can switch back to it
+	queue_enqueue(ready_queue, main_thread);
 
 	// While there are threads in the ready queue
 	while (queue_length(ready_queue) > 0) {
-		// Schedule the next thread
 		struct uthread_tcb *next;
 		queue_dequeue(ready_queue, (void**)&next);
 		next->thread_state = RUNNING;
-		
-		// Save current thread for context switch
+
 		struct uthread_tcb *prev = current_thread;
 		current_thread = next;
-		
-		// Switch context to next thread
+
 		uthread_ctx_switch(&prev->context, &next->context);
-		
-		// When we get back here, check if the previous thread has exited
+
+		// Clean up exited threads
 		if (prev->thread_state == EXITED) {
 			if (prev->stack)
 				uthread_ctx_destroy_stack(prev->stack);
@@ -184,13 +177,13 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		}
 	}
 
-	// Cleanup main thread and ready queue
 	free(main_thread);
 	queue_destroy(ready_queue);
 	ready_queue = NULL;
-	
+	main_thread = NULL;
 	return 0;
 }
+
 
 void uthread_block(void)
 {
