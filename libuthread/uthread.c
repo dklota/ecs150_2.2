@@ -36,19 +36,18 @@ struct uthread_tcb *uthread_current(void)
 
 void uthread_yield(void)
 {
-	struct uthread_tcb *curr = uthread_current();
-	struct uthread_tcb *next;
+    struct uthread_tcb *curr = current_thread;
+    struct uthread_tcb *next;
 
-	// change the state from running to ready, add to queue using enqueue
-	curr -> thread_state = READY;
-	queue_enqueue(ready_queue, curr);
-	//next = uthread_ctx_switch(curr, next)
-	
-	// dequeue next thread in queue, change the state from READY to RUNNING of next thread
+    if (queue_length(ready_queue) == 0)
+        return;
+
+    curr->thread_state = READY;
+    queue_enqueue(ready_queue, curr);
+
     queue_dequeue(ready_queue, (void **)&next);
-    next->thread_state = RUNNING; 
+    next->thread_state = RUNNING;
 
-    // switch context from the current to the next
     current_thread = next;
     uthread_ctx_switch(&curr->context, &next->context);
 }
