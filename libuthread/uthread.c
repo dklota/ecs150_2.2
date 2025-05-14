@@ -40,17 +40,21 @@ void uthread_yield(void)
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 
-	// change the state from running to ready, add to queue using enqueue
+	if (!curr || !ready_queue)
+		return;
+
 	curr->thread_state = READY;
 	queue_enqueue(ready_queue, curr);
-	
-	// dequeue next thread in queue, change the state from READY to RUNNING of next thread
-    queue_dequeue(ready_queue, (void **)&next);
-    next->thread_state = RUNNING;
-    
-    // switch context from the current to the next
-    current_thread = next;
-    uthread_ctx_switch(&curr->context, &next->context);
+
+	// Check if dequeue succeeded
+	if (queue_dequeue(ready_queue, (void **)&next) == 0 && next) {
+		next->thread_state = RUNNING;
+		current_thread = next;
+		uthread_ctx_switch(&curr->context, &next->context);
+	} else {
+		// No threads to switch to — this can happen if we yield with an empty queue
+		fprintf(stderr, "uthread_yield: No thread to yield to\n");
+	}
 }
 
 void uthread_exit(void)
