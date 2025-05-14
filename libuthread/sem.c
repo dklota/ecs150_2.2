@@ -6,26 +6,67 @@
 #include "sem.h"
 
 struct semaphore {
-	/* TODO Phase 3 */
+	size_t count;
+    queue_t wait;
 };
 
 sem_t sem_create(size_t count)
 {
-	/* TODO Phase 3 */
+	sem_t sem = malloc(sizeof(struct semaphore));
+    if (!sem)
+        return NULL;
+
+    sem->count = count;
+
+    sem->wait = queue_create();
+    if (!sem->wait) {
+        free(sem);
+        return NULL;
+    }
+
+    return sem;
 }
 
 int sem_destroy(sem_t sem)
 {
-	/* TODO Phase 3 */
+	if (!sem || queue_length(sem->wait) > 0)
+        return -1;
+
+    queue_destroy(sem->wait);
+	
+    free(sem);
+    return 0;
 }
 
 int sem_down(sem_t sem)
 {
-	/* TODO Phase 3 */
+	if (!sem)
+        return -1;
+
+	if (sem->count > 0) {
+        sem->count--;
+    } else {
+        thread_t self = thread_current();
+        queue_enqueue(sem->wait_queue, self);
+        thread_block();
+        return sem_down(sem);
+    }
+
+    return 0;
 }
 
 int sem_up(sem_t sem)
 {
-	/* TODO Phase 3 */
+	if (!sem)
+        return -1;
+
+    thread_t next;
+    if (queue_dequeue(sem->wait_queue, (void **)&next) == 0) {
+        thread_unblock(next);
+    } else {
+        sem->count++;
+    }
+
+    return 0;
 }
 
