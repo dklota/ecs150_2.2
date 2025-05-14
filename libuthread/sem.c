@@ -46,9 +46,9 @@ int sem_down(sem_t sem)
 	if (sem->count > 0) {
         sem->count--;
     } else {
-        thread_t self = thread_current();
+        uthread_t self = uthread_current();
         queue_enqueue(sem->wait_queue, self);
-        thread_block();
+        uthread_block();
         return sem_down(sem);
     }
 
@@ -60,9 +60,9 @@ int sem_up(sem_t sem)
 	if (!sem)
         return -1;
 
-    thread_t next;
+    uthread_t next;
     if (queue_dequeue(sem->wait_queue, (void **)&next) == 0) {
-        thread_unblock(next);
+        uthread_unblock(next);
     } else {
         sem->count++;
     }
