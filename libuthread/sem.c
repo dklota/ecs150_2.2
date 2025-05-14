@@ -41,19 +41,20 @@ int sem_down(sem_t sem)
     if (!sem)
         return -1;
 
-    preempt_disable();  // Use preempt_disable instead
+    preempt_disable();
 
-    if (sem->count > 0) {
-        sem->count--;
-    } else {
+    /* If no resources available, block until one becomes available */
+    while (sem->count == 0) {
         struct uthread_tcb *self = uthread_current();
         queue_enqueue(sem->wait, self);
         uthread_block();
-        preempt_enable();  // Use preempt_enable instead
-        return sem_down(sem);  // Try again after being unblocked
+        /* When we return from block, preemption is already disabled */
     }
 
-    preempt_enable();  // Use preempt_enable instead
+    /* Resource available, consume it */
+    sem->count--;
+
+    preempt_enable();
     return 0;
 }
 
@@ -62,8 +63,9 @@ int sem_up(sem_t sem)
     if (!sem)
         return -1;
 
-    preempt_disable();  // Use preempt_disable instead
+    preempt_disable();
 
+    /* Wake up a waiting thread if any, otherwise increment counter */
     struct uthread_tcb *next;
     if (queue_dequeue(sem->wait, (void **)&next) == 0) {
         uthread_unblock(next);
@@ -71,6 +73,6 @@ int sem_up(sem_t sem)
         sem->count++;
     }
 
-    preempt_enable();  // Use preempt_enable instead
+    preempt_enable();
     return 0;
 }
