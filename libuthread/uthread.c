@@ -31,13 +31,11 @@ struct uthread_tcb {
 
 struct uthread_tcb *uthread_current(void)
 {
-	/* TODO Phase 2/3 */
 	return current_thread;
 }
 
 void uthread_yield(void)
 {
-	/* TODO Phase 2 */
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 
@@ -57,27 +55,35 @@ void uthread_yield(void)
 
 void uthread_exit(void)
 {
-	/* TODO Phase 2 */
 	struct uthread_tcb *curr = uthread_current();
+	struct uthread_tcb *next;
 	curr->thread_state = EXITED;
 
-	if (curr->stack)
+	if (curr->stack) {
 		uthread_ctx_destroy_stack(curr->stack);
+	}
 
-	free(curr);
-
-	struct uthread_tcb *next;
+	// get next thread before freeing current one
 	if (queue_dequeue(ready_queue, (void**)&next) == 0) {
 		next->thread_state = RUNNING;
 		current_thread = next;
-		setcontext(&next->context); // does not return
+		free(curr);
+		// switch to next thread (doesn't return)
+		setcontext(&next->context);
+	} else {
+		// else no threads, so free current and exit
+		free(curr);
+		exit(0);
 	}
-
-	exit(0); // no threads left
 }
 
 int uthread_create(uthread_func_t func, void *arg)
 {
+	//if ready_queue exists
+	if (ready_queue == NULL) {
+		return 1;
+	}
+
 	//allocate the memory for the new thread 
 	struct uthread_tcb *new_thread = malloc(sizeof(struct uthread_tcb));
 	if (new_thread == NULL) { // ensure the memory was properly allocated
@@ -87,6 +93,7 @@ int uthread_create(uthread_func_t func, void *arg)
 	// allocate stack
 	new_thread -> stack = uthread_ctx_alloc_stack();
 	if (new_thread -> stack == NULL) { // ensure the memory was properly allocated
+		free(new_thread);
 		return -1;
 	}
 
@@ -94,37 +101,79 @@ int uthread_create(uthread_func_t func, void *arg)
 	new_thread -> thread_state = READY;
 
 	//initialize context of the thread using private.h functions
-	uthread_ctx_init(&new_thread -> context, new_thread -> stack, func, arg);
+	if (uthread_ctx_init(&new_thread->context, new_thread->stack, func, arg) != 0) {
+		uthread_ctx_destroy_stack(new_thread->stack);
+		free(new_thread);
+		return -1;
+	}
+	
+	// add to the ready queue of all threads
+	if (queue_enqueue(ready_queue, new_thread) != 0) {
+		uthread_ctx_destroy_stack(new_thread->stack);
+		free(new_thread);
+		return -1;
+	}
+
 	return 0;
 }
 
 int uthread_run(bool preempt, uthread_func_t func, void *arg)
 {
-	/* TODO Phase 2 */
 	if (ready_queue != NULL)
 		return -1; // prevent reentry
 
 	ready_queue = queue_create();
+	// if it's NULL after creation, exit
+	if (ready_queue == NULL) {
+		return -1;
+	}
 
-	// Create the main thread (current context)
+	// create the main thread = curr
 	struct uthread_tcb *main_thread = malloc(sizeof(struct uthread_tcb));
+	if (main_thread == NULL) { // check to see if allocation worked
+		queue_destroy(ready_queue);
+		ready_queue = NULL;
+		return -1;
+	}
+
 	main_thread->thread_state = RUNNING;
 	main_thread->stack = NULL;
 	getcontext(&main_thread->context);
 	current_thread = main_thread;
 
-	// Create the first user thread
-	uthread_create(func, arg);
+	// Create the first user thread, check to see proper memory alloc
+	if (uthread_create(func, arg) != 0) {
+		free(main_thread);
+		queue_destroy(ready_queue);
+		ready_queue = NULL;
+		return -1;
+	}
 
-	// Schedule the first thread
-	struct uthread_tcb *next;
-	queue_dequeue(ready_queue, (void**)&next);
-	next->thread_state = RUNNING;
-	current_thread = next;
-	uthread_ctx_switch(&main_thread->context, &next->context);
+	// for the threads in the ready_queue
+	while (queue_length(ready_queue) > 0) {
+		// schedule the next thread, change state and dequeue
+		struct uthread_tcb *next;
+		queue_dequeue(ready_queue, (void**)&next);
+		next->thread_state = RUNNING;
+		
+		// save current thread for context switch
+		struct uthread_tcb *prev = current_thread;
+		current_thread = next;
+		
+		// Switch context to next thread
+		uthread_ctx_switch(&prev->context, &next->context);
+		
+		// When we get back here, check if the previous thread has exited
+		if (prev->thread_state == EXITED) {
+			if (prev->stack)
+				uthread_ctx_destroy_stack(prev->stack);
+			free(prev);
+		}
+	}
 
 	// Cleanup
 	free(main_thread);
+	queue_destroy(ready_queue);
 	return 0;
 
 }
@@ -132,6 +181,8 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 void uthread_block(void)
 {
 	/* TODO Phase 3 */
+	// unblock thread: change the state to blocked
+	
 }
 
 void uthread_unblock(struct uthread_tcb *uthread)
