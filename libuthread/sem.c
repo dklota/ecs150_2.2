@@ -43,16 +43,16 @@ int sem_down(sem_t sem)
 
     preempt_disable();
 
-    /* If no resources available, block until one becomes available */
-    while (sem->count == 0) {
+    if (sem->count == 0) {
+        /* No resources available, block current thread */
         struct uthread_tcb *self = uthread_current();
         queue_enqueue(sem->wait, self);
         uthread_block();
-        /* When we return from block, preemption is already disabled */
+        /* When we get here after unblock, preemption is already disabled */
+    } else {
+        /* Resource available */
+        sem->count--;
     }
-
-    /* Resource available, consume it */
-    sem->count--;
 
     preempt_enable();
     return 0;
@@ -65,11 +65,13 @@ int sem_up(sem_t sem)
 
     preempt_disable();
 
-    /* Wake up a waiting thread if any, otherwise increment counter */
-    struct uthread_tcb *next;
+    struct uthread_tcb *next = NULL;
     if (queue_dequeue(sem->wait, (void **)&next) == 0) {
+        /* A thread is waiting, unblock it */
+        sem->count = 0;  /* Ensure count stays 0 as the thread will consume it */
         uthread_unblock(next);
     } else {
+        /* No threads waiting, increment count */
         sem->count++;
     }
 
