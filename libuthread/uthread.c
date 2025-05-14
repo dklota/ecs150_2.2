@@ -12,7 +12,6 @@
 
 static queue_t ready_queue = NULL;
 static struct uthread_tcb *current_thread = NULL; // declared globally to use for the current thread function
-static struct uthread_tcb *main_thread = NULL;
 
 enum state { // use enum to define the state
 	READY,
@@ -41,21 +40,17 @@ void uthread_yield(void)
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 
-	if (!curr || !ready_queue)
-		return;
-
+	// change the state from running to ready, add to queue using enqueue
 	curr->thread_state = READY;
 	queue_enqueue(ready_queue, curr);
-
-	// Check if dequeue succeeded
-	if (queue_dequeue(ready_queue, (void **)&next) == 0 && next) {
-		next->thread_state = RUNNING;
-		current_thread = next;
-		uthread_ctx_switch(&curr->context, &next->context);
-	} else {
-		// No threads to switch to — this can happen if we yield with an empty queue
-		fprintf(stderr, "uthread_yield: No thread to yield to\n");
-	}
+	
+	// dequeue next thread in queue, change the state from READY to RUNNING of next thread
+    queue_dequeue(ready_queue, (void **)&next);
+    next->thread_state = RUNNING;
+    
+    // switch context from the current to the next
+    current_thread = next;
+    uthread_ctx_switch(&curr->context, &next->context);
 }
 
 void uthread_exit(void)
