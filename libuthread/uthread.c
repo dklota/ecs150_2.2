@@ -12,7 +12,6 @@
 
 static queue_t ready_queue = NULL;
 static struct uthread_tcb *current_thread = NULL; // declared globally to use for the current thread function
-static int tid_counter = 0; // Thread ID counter for unique IDs
 
 enum state { // use enum to define the state
 	READY,
@@ -38,80 +37,48 @@ struct uthread_tcb *uthread_current(void)
 void uthread_yield(void)
 {
 	/* TODO Phase 2 */
-	// Get current thread
-	struct uthread_tcb *current = uthread_current();
-	if (current == NULL || ready_queue == NULL || queue_length(ready_queue) == 0) {
-		// Nothing to yield to
-		return;
-	}
-
-	// Get next thread from ready queue
+	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
-	if (queue_dequeue(ready_queue, (void **)&next) != 0) {
-		// No thread to yield to
-		return;
-	}
+
+	// change the state from running to ready, add to queue using enqueue
+	curr->thread_state = READY;
+	queue_enqueue(ready_queue, curr);
 	
-	// Mark current thread as ready and add to queue
-	current->thread_state = READY;
-	if (queue_enqueue(ready_queue, current) != 0) {
-		// Failed to enqueue current thread, put next thread back and return
-		queue_enqueue(ready_queue, next);
-		return;
-	}
+	// dequeue next thread in queue, change the state from READY to RUNNING of next thread
+    queue_dequeue(ready_queue, (void **)&next);
+    next->thread_state = RUNNING;
     
-	// Mark next thread as running
-	next->thread_state = RUNNING;
-    
-	// Update current thread pointer and perform context switch
-	struct uthread_tcb *prev = current;
-	current_thread = next;
-	
-	// Perform context switch
-	uthread_ctx_switch(&prev->context, &next->context);
+    // switch context from the current to the next
+    current_thread = next;
+    uthread_ctx_switch(&curr->context, &next->context);
 }
 
 void uthread_exit(void)
 {
 	/* TODO Phase 2 */
-	// Get current thread
 	struct uthread_tcb *curr = uthread_current();
-	if (curr == NULL || ready_queue == NULL) {
-		// This should not happen, but just in case
-		exit(1);
-	}
+	struct uthread_tcb *next;
 	
-	// Mark current thread as exited
 	curr->thread_state = EXITED;
 
-	// Get next thread from ready queue
-	struct uthread_tcb *next;
-	if (queue_dequeue(ready_queue, (void**)&next) != 0) {
-		// No more threads in ready queue, clean up and exit program
-		if (curr->stack)
-			uthread_ctx_destroy_stack(curr->stack);
+	if (curr->stack)
+		uthread_ctx_destroy_stack(curr->stack);
+
+	// Get next thread before freeing current one
+	if (queue_dequeue(ready_queue, (void**)&next) == 0) {
+		next->thread_state = RUNNING;
+		current_thread = next;
+		
+		// Free current thread after getting next thread
 		free(curr);
 		
-		queue_destroy(ready_queue);
-		ready_queue = NULL;
-		
+		// Switch to next thread (doesn't return)
+		setcontext(&next->context);
+	} else {
+		// No more threads, free current and exit
+		free(curr);
 		exit(0);
 	}
-	
-	// Prepare next thread to run
-	next->thread_state = RUNNING;
-	current_thread = next;
-	
-	// We don't free the current thread's resources here
-	// They will be freed when control returns to uthread_run
-	// after the context switch
-	
-	// Switch to next thread (doesn't return)
-	uthread_ctx_switch(&curr->context, &next->context);
-	
-	// Should never reach here
-	fprintf(stderr, "Error: uthread_exit returned from context switch\n");
-	exit(1);
 }
 
 int uthread_create(uthread_func_t func, void *arg)
@@ -134,9 +101,8 @@ int uthread_create(uthread_func_t func, void *arg)
 		return -1;
 	}
 
-	// Define thread state and assign thread ID
+	// Define thread state
 	new_thread->thread_state = READY;
-	new_thread->id = tid_counter++;
 
 	// Initialize context of the thread using private.h functions
 	if (uthread_ctx_init(&new_thread->context, new_thread->stack, func, arg) != 0) {
@@ -158,7 +124,6 @@ int uthread_create(uthread_func_t func, void *arg)
 int uthread_run(bool preempt, uthread_func_t func, void *arg)
 {
 	/* TODO Phase 2 */
-	// Check if ready_queue already exists
 	if (ready_queue != NULL)
 		return -1; // prevent reentry
 
@@ -175,21 +140,13 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		return -1;
 	}
 	
-	// Initialize main thread
 	main_thread->thread_state = RUNNING;
-	main_thread->stack = NULL; // Main thread doesn't need a stack allocation
-	main_thread->id = tid_counter++;
-	if (getcontext(&main_thread->context) != 0) {
-		free(main_thread);
-		queue_destroy(ready_queue);
-		ready_queue = NULL;
-		return -1;
-	}
+	main_thread->stack = NULL;
+	getcontext(&main_thread->context);
 	current_thread = main_thread;
 
 	// Create the first user thread
-	int ret = uthread_create(func, arg);
-	if (ret != 0) {
+	if (uthread_create(func, arg) != 0) {
 		free(main_thread);
 		queue_destroy(ready_queue);
 		ready_queue = NULL;
@@ -201,45 +158,33 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		// Preemption will be implemented in Phase 4
 	}
 
-	// As long as there are threads in the ready queue
+	// While there are threads in the ready queue
 	while (queue_length(ready_queue) > 0) {
-		// Get next thread from ready queue
-		struct uthread_tcb *next_thread;
-		if (queue_dequeue(ready_queue, (void**)&next_thread) != 0) {
-			// Something went wrong with queue operations
-			break;
-		}
+		// Schedule the next thread
+		struct uthread_tcb *next;
+		queue_dequeue(ready_queue, (void**)&next);
+		next->thread_state = RUNNING;
 		
-		// Mark next thread as running
-		next_thread->thread_state = RUNNING;
+		// Save current thread for context switch
+		struct uthread_tcb *prev = current_thread;
+		current_thread = next;
 		
-		// Save previous thread for context switching
-		struct uthread_tcb *prev_thread = current_thread;
+		// Switch context to next thread
+		uthread_ctx_switch(&prev->context, &next->context);
 		
-		// Update current thread
-		current_thread = next_thread;
-		
-		// Context switch to next thread
-		if (uthread_ctx_switch(&prev_thread->context, &next_thread->context) != 0) {
-			// Context switch failed
-			fprintf(stderr, "Context switch failed\n");
-			break;
-		}
-		
-		// When we return here, check if previous thread has exited
-		if (prev_thread->thread_state == EXITED) {
-			if (prev_thread->stack != NULL) {
-				uthread_ctx_destroy_stack(prev_thread->stack);
-			}
-			free(prev_thread);
+		// When we get back here, check if the previous thread has exited
+		if (prev->thread_state == EXITED) {
+			if (prev->stack)
+				uthread_ctx_destroy_stack(prev->stack);
+			free(prev);
 		}
 	}
 
-	// Clean up any remaining resources
+	// Cleanup main thread and ready queue
+	free(main_thread);
 	queue_destroy(ready_queue);
 	ready_queue = NULL;
 	
-	// If we reach here, all threads have completed
 	return 0;
 }
 
