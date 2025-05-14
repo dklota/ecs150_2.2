@@ -4,6 +4,9 @@ lib := libuthread.a
 # object files to include in library
 objs := queue.o
 
+CC := gcc
+CFLAGS := -Wall -Werror -g
+
 all: $(lib)
 
 # create static library, as provided in the link in the project information
