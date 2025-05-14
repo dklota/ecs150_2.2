@@ -10,7 +10,9 @@
 #include "uthread.h"
 #include "queue.h"
 
-struct uthread_tcb *current_thread = NULL; // declared globally to use for func uthread_current
+static queue_t ready_queue = NULL;
+static struct uthread_tcb *current_thread = NULL; // declared globally to use for the current thread function
+
 
 enum state { // use enum to define the state
 	READY,
@@ -49,7 +51,7 @@ void uthread_yield(void)
     next->thread_state = RUNNING; 
 
     // switch context from the current to the next
-    uthread_set_current(next);
+    current_thread = next;
     uthread_ctx_switch(&curr->context, &next->context);
 }
 
