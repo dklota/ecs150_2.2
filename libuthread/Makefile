@@ -2,7 +2,7 @@
 lib := libuthread.a
 
 # object files to include in library
-objs := queue.o	uthread.o context.o	preempt.o
+objs := queue.o	uthread.o context.o	preempt.o sem.o
 
 CC := gcc
 CFLAGS := -Wall -Werror -g
