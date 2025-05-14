@@ -84,7 +84,7 @@ int queue_dequeue(queue_t queue, void **data)
 	
 	// if the queue is now empty - fix the tail
 	if (queue -> head == NULL) {
-		queue -> tail == NULL;
+		queue -> tail = NULL;
 	}
 
 	free(first_node);
