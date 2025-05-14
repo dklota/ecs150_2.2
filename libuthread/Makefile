@@ -2,14 +2,14 @@
 lib := libuthread.a
 
 # object files to include in library
-objs := queue.o uthread.o context.o preempt.o
+objs := queue.o
 
 CC := gcc
 CFLAGS := -Wall -Werror -g
 
 all: $(lib)
 
-# create static library
+# create static library, as provided in the link in the project information
 $(lib): $(objs)
 	ar rcs $@ $^
 
