@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "queue.h"
 #include "private.h"
@@ -43,12 +44,11 @@ int sem_down(sem_t sem)
 
     preempt_disable();
 
+    /* If count is 0, block until a resource becomes available */
     if (sem->count == 0) {
-        /* No resources available, block current thread */
         struct uthread_tcb *self = uthread_current();
         queue_enqueue(sem->wait, self);
         uthread_block();
-        /* When we get here after unblock, preemption is already disabled */
     } else {
         /* Resource available */
         sem->count--;
@@ -60,18 +60,20 @@ int sem_down(sem_t sem)
 
 int sem_up(sem_t sem)
 {
+    struct uthread_tcb *next;
+    
     if (!sem)
         return -1;
 
     preempt_disable();
 
-    struct uthread_tcb *next = NULL;
-    if (queue_dequeue(sem->wait, (void **)&next) == 0) {
-        /* A thread is waiting, unblock it */
-        sem->count = 0;  /* Ensure count stays 0 as the thread will consume it */
+    /* If there are blocked threads, wake up one */
+    if (queue_length(sem->wait) > 0) {
+        queue_dequeue(sem->wait, (void **)&next);
+        /* We decrease count below, so don't need to adjust it here */
         uthread_unblock(next);
     } else {
-        /* No threads waiting, increment count */
+        /* No waiting threads, increment count */
         sem->count++;
     }
 
