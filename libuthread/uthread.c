@@ -38,24 +38,50 @@ struct uthread_tcb *uthread_current(void)
 void uthread_yield(void)
 {
 	/* TODO Phase 2 */
+	// define the current thread and next thread
+	// the goal is to allow the next thread to execute and stop in the current thread
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 
-	if (!curr || !ready_queue)
-		return;
+	//printf("[yield] current thread: %p\n", curr);
 
+	// if (queue_length(ready_queue) == 0) {
+	// 	printf("[yield] ready_queue is empty, skipping yield\n");
+	// 	return;
+	// }
+
+	if (!curr || !ready_queue) {
+       //fprintf(stderr, "[yield] Error: current thread or ready queue is NULL\n");
+        return;
+    }
+
+	//printf("[yield] current thread: %p\n", curr);
+
+	// change the state of the current thread to ready and add it to the end of the ready_queue
 	curr->thread_state = READY;
-	queue_enqueue(ready_queue, curr);
+	//queue_enqueue(ready_queue, curr);
+	if (queue_enqueue(ready_queue, curr) < 0) {
+        //fprintf(stderr, "[yield] Error: failed to enqueue current thread\n");
+        return;
+    }
+
+	//printf("[yield] enqueued current thread: %p\n", curr);
 
 	// Check if dequeue succeeded
-	if (queue_dequeue(ready_queue, (void **)&next) == 0 && next) {
-		next->thread_state = RUNNING;
-		current_thread = next;
-		uthread_ctx_switch(&curr->context, &next->context);
-	} else {
-		// No threads to switch to — this can happen if we yield with an empty queue
-		fprintf(stderr, "uthread_yield: No thread to yield to\n");
-	}
+	//printf("[yield] attempting to dequeue next thread\n");
+	if (queue_dequeue(ready_queue, (void **)&next) != 0 || next == NULL) {
+        //fprintf(stderr, "[yield] Error: no thread to yield to — ready queue empty or dequeue failed\n");
+        return;
+    }
+
+	// Prepare to switch to next thread
+    next->thread_state = RUNNING;
+    current_thread = next;
+    //printf("[yield] switching to next thread: %p\n", next);
+
+    // Confirm before switching
+    //printf("[yield] About to switch: curr=%p, next=%p\n", curr, next);
+    uthread_ctx_switch(&curr->context, &next->context);
 }
 
 void uthread_exit(void)

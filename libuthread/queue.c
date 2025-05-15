@@ -61,6 +61,7 @@ int queue_enqueue(queue_t queue, void *data)
 	}
 	else {
 		//there is more in the queue already
+		queue->tail->next = add_node;
 		queue -> tail = add_node;
 	}
 
