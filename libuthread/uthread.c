@@ -1,4 +1,3 @@
-
 #include <assert.h>
 #include <signal.h>
 #include <stddef.h>
@@ -11,7 +10,7 @@
 #include "uthread.h"
 #include "queue.h"
 
-static queue_t ready_queue = NULL;
+queue_t ready_queue = NULL;
 static struct uthread_tcb *current_thread = NULL; // declared globally to use for the current thread function
 
 enum state { // use enum to define the state
@@ -43,37 +42,35 @@ void uthread_yield(void)
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 
-	//printf("[yield] current thread: %p\n", curr);
-
-	// if (queue_length(ready_queue) == 0) {
-	// 	printf("[yield] ready_queue is empty, skipping yield\n");
-	// 	return;
-	// }
 
 	if (!curr || !ready_queue) {
-       //fprintf(stderr, "[yield] Error: current thread or ready queue is NULL\n");
         return;
     }
 
-	//printf("[yield] current thread: %p\n", curr);
+	 preempt_disable(); // protect queue ops
 
 	// change the state of the current thread to ready and add it to the end of the ready_queue
 	curr->thread_state = READY;
 	//queue_enqueue(ready_queue, curr);
 	if (queue_enqueue(ready_queue, curr) < 0) {
         //fprintf(stderr, "[yield] Error: failed to enqueue current thread\n");
+		preempt_enable();
         return;
     }
-
-	//printf("[yield] enqueued current thread: %p\n", curr);
 
 	// Check if dequeue succeeded
 	//printf("[yield] attempting to dequeue next thread\n");
 	if (queue_dequeue(ready_queue, (void **)&next) != 0 || next == NULL) {
         //fprintf(stderr, "[yield] Error: no thread to yield to — ready queue empty or dequeue failed\n");
+		preempt_enable();
         return;
     }
 
+	if (next == curr) {
+        queue_enqueue(ready_queue, next); // requeue next
+        preempt_enable();
+        return;
+    }
 	// Prepare to switch to next thread
     next->thread_state = RUNNING;
     current_thread = next;
@@ -86,7 +83,6 @@ void uthread_yield(void)
 
 void uthread_exit(void)
 {
-	/* TODO Phase 2 */
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 	
@@ -162,6 +158,10 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 	if (ready_queue == NULL)
 		return -1;
 
+	if (preempt) {
+    preempt_start(preempt);  // 🔼 move this here
+	}
+
 	// run preemption start
     //preempt_start(preempt);
 
@@ -188,10 +188,10 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		return -1;
 	}
 
-	// Handle preemption if requested
-	if (preempt) {
-		preempt_start(preempt);
-	}
+	// // Handle preemption if requested
+	// if (preempt) {
+	// 	preempt_start(preempt);
+	// }
 
 	// While there are threads in the ready queue
 	while (queue_length(ready_queue) > 0) {
@@ -204,6 +204,7 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		struct uthread_tcb *prev = current_thread;
 		current_thread = next;
 		
+		preempt_enable();
 		// Switch context to next thread
 		uthread_ctx_switch(&prev->context, &next->context);
 		
@@ -254,6 +255,8 @@ void uthread_unblock(struct uthread_tcb *uthread)
 	// Only unblock if thread is actually blocked
 	if (uthread->thread_state == BLOCKED) {
 		uthread->thread_state = READY;
+		preempt_disable();
 		queue_enqueue(ready_queue, uthread);
+		preempt_enable();
 	}
 }
