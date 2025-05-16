@@ -82,7 +82,7 @@ void preempt_start(bool preempt)
     timer.it_interval.tv_usec = 1000000 / HZ;  
     
 	//sets a virtual timer
-    setitimer(ITIMER_REAL, &timer, &orig_timer);
+    setitimer(ITIMER_VIRTUAL, &timer, &orig_timer);
 
     
     active = true;
@@ -94,7 +94,7 @@ void preempt_stop(void)
         return;
 
 	//restores previous timer
-    setitimer(ITIMER_REAL, &orig_timer, NULL);
+    setitimer(ITIMER_VIRTUAL, &orig_timer, NULL);
     sigaction(SIGVTALRM, &orig_action, NULL);
     
     active = false;
