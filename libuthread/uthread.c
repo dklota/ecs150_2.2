@@ -154,7 +154,6 @@ int uthread_create(uthread_func_t func, void *arg)
 
 int uthread_run(bool preempt, uthread_func_t func, void *arg)
 {
-	/* TODO Phase 2 */
 	if (ready_queue != NULL)
 		return -1; // prevent reentry
 
@@ -163,11 +162,15 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 	if (ready_queue == NULL)
 		return -1;
 
+	// run preemption start
+    //preempt_start(preempt);
+
 	// Create the main thread (current context)
 	struct uthread_tcb *main_thread = malloc(sizeof(struct uthread_tcb));
 	if (main_thread == NULL) {
 		queue_destroy(ready_queue);
 		ready_queue = NULL;
+		preempt_stop();
 		return -1;
 	}
 	
@@ -181,12 +184,13 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 		free(main_thread);
 		queue_destroy(ready_queue);
 		ready_queue = NULL;
+		preempt_stop();
 		return -1;
 	}
 
 	// Handle preemption if requested
 	if (preempt) {
-		// Preemption will be implemented in Phase 4
+		preempt_start(preempt);
 	}
 
 	// While there are threads in the ready queue
@@ -212,6 +216,9 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 	}
 
 	// Cleanup main thread and ready queue
+	if (preempt) {
+        preempt_stop();
+    } 
 	free(main_thread);
 	queue_destroy(ready_queue);
 	ready_queue = NULL;
@@ -221,7 +228,6 @@ int uthread_run(bool preempt, uthread_func_t func, void *arg)
 
 void uthread_block(void)
 {
-	/* TODO Phase 3 */
 	struct uthread_tcb *curr = uthread_current();
 	struct uthread_tcb *next;
 	
@@ -242,7 +248,6 @@ void uthread_block(void)
 
 void uthread_unblock(struct uthread_tcb *uthread)
 {
-	/* TODO Phase 3 */
 	if (uthread == NULL)
 		return;
 		
