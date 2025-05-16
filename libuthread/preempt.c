@@ -17,16 +17,17 @@
  */
 #define HZ 100
 
-static struct sigaction original_action;
-static struct itimerval original_timer;
-static bool preemption_active = false;
+static struct sigaction orig_action;
+static struct itimerval orig_timer;
+static bool active = false;
 extern queue_t ready_queue;
 
 
 static void signal_handler(int signum)
 {
+	//calls uthread to yield
 
-    extern queue_t ready_queue;  // Pull in the scheduler's queue
+    extern queue_t ready_queue; 
     if (ready_queue && queue_length(ready_queue) > 0) {
         uthread_yield();
     }
@@ -34,7 +35,8 @@ static void signal_handler(int signum)
 
 void preempt_disable(void)
 {
-	if (!preemption_active)
+	//blocks SIGVTALRM to prevent preemption
+	if (!active)
         return;
 
     sigset_t mask;
@@ -47,7 +49,8 @@ void preempt_disable(void)
 
 void preempt_enable(void)
 {
-    if (!preemption_active) {
+	//enables SIGVTALRM and allows preemption
+    if (!active) {
         return;
     }
 
@@ -63,6 +66,7 @@ void preempt_start(bool preempt)
     if (!preempt)
         return;
     
+	//if preempt is true, sets a signal handler
     struct sigaction sa;
     struct itimerval timer;
 
@@ -70,27 +74,28 @@ void preempt_start(bool preempt)
     sa.sa_handler = signal_handler;
     sa.sa_flags = 0;
     
-    sigaction(SIGVTALRM, &sa, &original_action);
+    sigaction(SIGVTALRM, &sa, &orig_action);
     
     timer.it_value.tv_sec = 0;
     timer.it_value.tv_usec = 1000000 / HZ; 
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = 1000000 / HZ;  
     
-    setitimer(ITIMER_REAL, &timer, &original_timer);
+	//sets a virtual timer
+    setitimer(ITIMER_REAL, &timer, &orig_timer);
 
     
-    preemption_active = true;
+    active = true;
 }
 
 void preempt_stop(void)
 {
-	if (!preemption_active)
+	if (!active)
         return;
-    
-    setitimer(ITIMER_REAL, &original_timer, NULL);
-    sigaction(SIGVTALRM, &original_action, NULL);
-    
-    preemption_active = false;
-}
 
+	//restores previous timer
+    setitimer(ITIMER_REAL, &orig_timer, NULL);
+    sigaction(SIGVTALRM, &orig_action, NULL);
+    
+    active = false;
+}
