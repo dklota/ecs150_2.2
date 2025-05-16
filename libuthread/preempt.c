@@ -8,6 +8,8 @@
 
 #include "private.h"
 #include "uthread.h"
+#include "queue.h"
+
 
 /*
  * Frequency of preemption
@@ -18,10 +20,16 @@
 static struct sigaction original_action;
 static struct itimerval original_timer;
 static bool preemption_active = false;
+extern queue_t ready_queue;
+
 
 static void signal_handler(int signum)
 {
-    uthread_yield();
+
+    extern queue_t ready_queue;  // Pull in the scheduler's queue
+    if (ready_queue && queue_length(ready_queue) > 0) {
+        uthread_yield();
+    }
 }
 
 void preempt_disable(void)
@@ -39,15 +47,16 @@ void preempt_disable(void)
 
 void preempt_enable(void)
 {
-	if (!preemption_active)
+    if (!preemption_active) {
         return;
+    }
 
     sigset_t mask;
-
     sigemptyset(&mask);
     sigaddset(&mask, SIGVTALRM);
     sigprocmask(SIG_UNBLOCK, &mask, NULL);
 }
+
 
 void preempt_start(bool preempt)
 {
@@ -56,7 +65,7 @@ void preempt_start(bool preempt)
     
     struct sigaction sa;
     struct itimerval timer;
-    
+
     sigemptyset(&sa.sa_mask);
     sa.sa_handler = signal_handler;
     sa.sa_flags = 0;
@@ -68,7 +77,8 @@ void preempt_start(bool preempt)
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = 1000000 / HZ;  
     
-    setitimer(ITIMER_VIRTUAL, &timer, &original_timer);
+    setitimer(ITIMER_REAL, &timer, &original_timer);
+
     
     preemption_active = true;
 }
@@ -78,7 +88,7 @@ void preempt_stop(void)
 	if (!preemption_active)
         return;
     
-    setitimer(ITIMER_VIRTUAL, &original_timer, NULL);
+    setitimer(ITIMER_REAL, &original_timer, NULL);
     sigaction(SIGVTALRM, &original_action, NULL);
     
     preemption_active = false;
